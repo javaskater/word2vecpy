@@ -93,12 +93,73 @@ class Vocab:
     def __iter__(self): #allow to call for item in vocab
         return iter(self.vocab_items)
     
-    #used by the indices method of this class
+    #used by the indices method of this class especially the in in self!!!
     def __contains__(self, key): #return True or False depending on key (token:string) in Vocab
         return key in self.vocab_hash #see if key is in the keys of the dictionary
     
     def indices(self, tokens): #token in list is made possible by the special __contains__ method !!!
         return [self.vocab_hash[token] if token in self else self.vocab_hash['<unk>'] for token in tokens] #returns a list
+    
+    """build a Huffmann tree"""
+    def encode_huffmann(self):
+        vocab_size = len(self)
+        count = [t.count for t in self] + [1e15] * (vocab_size -1) # size vocab_size + vocab_size -1
+        parent = [0] * (2 * vocab_size -2) # size vocab_size + vocab_size -1 (different parents) and we exclude the root_idx which has no perent
+        binary = [0] * (2 * vocab_size -2) # same as above the root_idx fans no Huffmancode see schema and while node_idx < rott_idx: underneath
+
+        pos1 = vocab_size -1 #count[pos1] the less frequent word
+        pos2 = vocab_size # count[pos2] = 1e15
+
+        #see schema on https://towardsdatascience.com/huffman-encoding-python-implementation-8448c3654328
+        ## on the link the nodes are classified in descending frequency
+        for i in range(vocab_size -1): #from 0 to vocab_size - 2 (we include the root_idx) see schema
+            #find min1 the less frequent word in the resulting tree
+            if pos1 >= 0: #i = 0 for pos1 = vocab_size-1 i = vocabsize - 2 por pos1 = 1
+                if count[pos1] < count[pos2]: # true for the first time
+                    min1 = pos1
+                    pos1 -= 1 # we take the term a bit more frequent thne the minimal (to calculate min2)
+                else: #cela arrive les fois suivantes quand count[vocab_size + i] = count[min1] + count[min2] on ajoute les instervalle soit vocab_size + 1
+                    min1 = pos2
+                    pos2 += 1
+            else: # we only check the upper part count[vocab_size + i] = count[min1] + count[min2]
+                min1 = pos2
+                pos2 += 1
+            
+            #find min2 the second less frequent word in the resulting tree pos1 decrease as frequency increase
+            if pos1 >= 0:
+                if count[pos1] < count(pos2):
+                    min2 = pos1
+                    pos1  -= 1 #pos1 (leafs) decrease we exclude the one that are after for future iterations
+                else:
+                    min2 = pos2
+                    pos2 += 1 #pos2 (not leafs) increase as frequency increase we exclude the ones that are before for future parent code calculations
+            else:
+                min2 = pos2
+                pos2 += 1
+
+            count[vocab_size + i] = count[min1] + count[min2]
+            parent[min1] = vocab_size + i #min 1 varies from vocab_size -1 (i = 0) to 1 or from vocab_size to vocab_size + vocab_size -2
+            parent[min2] = vocab_size + i #min2 varies from vocab_size - 2 (i = 0) to 0 or from vocab_size to vocab_size + vocab_size -2
+            binary[min2] = 1 #the more frequent word in a subtree is represented by 1 binary[min1] is already 0
+
+            #assign binary code and path pointer to each vocab word
+            root_idx = 2 * vocab_size -2 # vocab_size -1 is the last vocab_item + from vocab_size to vocab_size + vocab_size - 2 for the non leaf nodes see schema
+            for i, vocab_item in enumerate(self):
+                path = [] #list of indices from leaf to the root
+                code = [] #binary Huffmann encoding from leaf to the root
+
+                node_idx = i #0 is the most frequent word vocab_size -1 is the less frequent word
+                
+                while(node_idx < root_idx):
+                    if node_idx >= vocab_size: path.append(node_idx) #we start with the first parent then the parent of parent
+                    code.append(binary[node_idx])
+                    node_idx = parent[node_idx]
+                path.append[root_idx]
+
+                vocab_item.path = [j - vocab_size for j in path[::-1]] #I chose to begin at 0 first index of the non leaf nodes !
+                vocab_item.code = code[::-1]
+
+
 
 def train(fi, fo, cbow, neg, dim, alpha, win, min_count, num_processes, binary):
     print(f"the input training file: {fi}")
