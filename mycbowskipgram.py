@@ -2,6 +2,8 @@
 
 import argparse
 import sys
+import math
+import numpy as np
 
 class VocabItem:
     def __init__(self, word):
@@ -156,10 +158,46 @@ class Vocab:
                     node_idx = parent[node_idx]
                 path.append[root_idx]
 
-                vocab_item.path = [j - vocab_size for j in path[::-1]] #I chose to begin at 0 first index of the non leaf nodes !
+                vocab_item.path = [j - voca
+                b_size for j in path[::-1]] #I chose to begin at 0 first index of the non leaf nodes !
                 vocab_item.code = code[::-1]
 
+class UnigramTable:
+    """ A list of indices of vocab_items (tokens) in a table following a power distribution
+        used to draw negative samples see http://mccormickml.com/2017/01/11/word2vec-tutorial-part-2-negative-sampling/
+    """
 
+    def __init__(self, vocab):
+        power = 0.75 #lessen frequent words and augment les frequent words see http://mccormickml.com/2017/01/11/word2vec-tutorial-part-2-negative-sampling/
+        norm = sum([math.pow(t.count, power) for t in vocab]) #normalizing constant to get a probaility, see the __iter__ implemntation of vocab
+        
+        table_size = 1e8 #length of the unigram table
+        table = np.zeros(table_size, dtype=np.uint32) #it is a table of indices in the Vocab object see __get_item__(self, indice)
+
+        print("Filling the Unigram table")
+        p = 0 #the cumulative probaility
+        i = 0 #the table indice table[i] is the indice in the Vocak object to be repeated until P(wi)
+
+        for j, unigram in enumerate(vocab): #we get the indices of the vocab items in j sorted from the most frequent token to the less frequent one
+            p += math.pow(unigram.count, power) / norm
+            while i < table_size and float(i) / table_size < p:
+                table[i] = j
+                i += 1
+        
+        self.table = table #we need it to take a negative sample
+
+    #we take count negative samples
+    def sample(self, count): 
+        indices = np.random.randint(0, len(self.table), count)
+        return [ self.table[i] for i in indices ]
+
+def sigmoid(z):
+    if z > 6:
+        return 1
+    elif z < -6:
+        return 0
+    else:
+        return 1. / (1. + np.exp(-z))
 
 def train(fi, fo, cbow, neg, dim, alpha, win, min_count, num_processes, binary):
     print(f"the input training file: {fi}")
