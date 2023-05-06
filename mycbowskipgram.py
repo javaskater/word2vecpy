@@ -4,6 +4,10 @@ import argparse
 import sys
 import math
 import numpy as np
+import time
+import struct
+
+from multiprocessing import Array, Value, Pool
 
 class VocabItem:
     def __init__(self, word):
@@ -198,6 +202,47 @@ def sigmoid(z):
         return 0
     else:
         return 1. / (1. + np.exp(-z))
+    
+#for the sense of syn0 and syn1 see the answer at https://stackoverflow.com/questions/53301916/python-gensim-what-is-the-meaning-of-syn0-and-syn0norm
+def init_net(dim, vocab_size): #dim is the dimension of the hidden layer, vocab_size is the number of lines at the input
+    #init syn0 with a uniform distribution on the interval [-0.5, 0.5]/dim. syn0 represents the output vectors
+    tmp = np.random.uniform(low=-0.5/dim, high=0.5/dim, size=(vocab_size, dim))
+    syn0 = np.ctypeslib.as_ctypes(tmp)
+    syn0 = Array(syn0._type_, syn0, lock=False)
+
+    #init syn1 with zeros syn1 reprensent the weight of the hidden layer
+    tmp = np.zeros(shape=(vocab_size, dim))
+    syn1 = np.ctypeslib.as_ctypes(tmp)
+    syn1 = Array(syn1._type_, syn1, lock=False)
+
+    return (syn0, syn1)
+
+#vocab classified from more frequent to less frequent and the syn0 lines must match (use of zip underneath)
+def save(vocab, syn0, fo, binary):
+    print(f"[save]Saving output vectors to {fo} in binary({binary}) mode ") # fo is the path of the output file
+    dim = len(syn0[0]) # the second dimension of syn0 the size of the output vectors
+    #what a zip does: https://www.programiz.com/python-programming/methods/built-in/zip
+    if binary:
+        fo = open(fo, 'wb') #write binary format
+        fo.write("%d %d\n" %(len(syn0, dim))) #the number of words and the output dimension of each word (projection)
+        fo.write("\n")
+
+        for vocab_item, vector in zip(vocab, syn0): # vocab has a __iter__ method vocab and syn0 must list the words in the same order vocab[0] must correspond to syn[0]
+            fo.write("%s " % vocab_item.word)
+            for s in vector:
+                fo.write(struct.pack('f', s)) #we add a 32bits representation of float s
+            fo.write("\n")
+    else: #we write in text format
+        fo = open(fo, 'w') #write text format
+        fo.write("%d %d\n" %(len(syn0, dim))) #the number of words and the output dimension of each word (projection)
+
+        for vocab_item, vector in zip(vocab, syn0):
+            word = vocab_item.word
+            word_projection = ' '.join([str(s) for s in vector]) # s in vector is a float I onlys join strings
+            fo.write('%s %s \n' %(word, word_projection))
+
+    fo.close()
+
 
 def train(fi, fo, cbow, neg, dim, alpha, win, min_count, num_processes, binary):
     print(f"the input training file: {fi}")
@@ -219,6 +264,32 @@ def train(fi, fo, cbow, neg, dim, alpha, win, min_count, num_processes, binary):
 
     #Read train file to init Vocab
     vocab = Vocab(fi, min_count)
+
+    #init network syn0 are the output words, syn1 are the weight of the hidden layer
+    syn0, syn1 = init_net(dim, len(vocab)) # see the defined __len__ method in the Vocab class
+
+    global_word_count = Value('i', 0) # shared integer ('i') value between processes intialized at 0
+
+    table = None
+    if neg > 0:
+        print("[train] initializing the UNIGRAMM table")
+        table = UnigramTable(vocab)
+    else:
+        print("[train] Calculating the HUFFMAN tree")
+        vocab.encode_huffmann()
+
+    #now we are startinf the training job
+    t0 = time.time()
+    pool = Pool(processes=num_processes, initializer=__init_process, initargs=())
+    #TODO the intialization and the training itself
+    t1 = time.time()
+    duration_in_minutes = round((t1 - t0)/60)
+    print(f"[train] the total durantion of the training took {duration_in_minutes} minutes using {num_processes} threads")
+
+    #save the model to a file
+    ## vocab and syn0 have been calculated syn0 is the vocabulary projected in the new space
+    ## fo and binary are arguments introduced manually by the user
+    save(vocab, syn0, fo, binary) #fo is the path of the output file
 
 
 if __name__ == "__main__":
