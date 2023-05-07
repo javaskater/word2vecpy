@@ -6,6 +6,7 @@ import math
 import numpy as np
 import time
 import struct
+import warnings
 
 from multiprocessing import Array, Value, Pool
 
@@ -243,6 +244,18 @@ def save(vocab, syn0, fo, binary):
 
     fo.close()
 
+#setting the pool variables as global variables to be shared
+def __init_process(*args): 
+    global vocab, syn0, syn1, table, cbow, neg, dim, starting_alpha
+    global win, num_processes, global_word_count, fi
+
+    vocab, syn0_tmp, syn1_tmp, table, cbow, neg, dim, starting_alpha, win, num_processes, global_word_count = args[:-1]
+    fi = open(args[-1], 'r')
+    #see https://www.pythonpool.com/suppress-warnings-in-python/ for supressing warnings for specific lines of code
+    with warnings.catch_warnings:
+        warnings.simplefilter('ignore', RuntimeWarning)
+        syn0 = np.ctypeslib.as_array(syn0_tmp)
+        syn1 = np.ctypeslib.as_array(syn1_tmp)
 
 def train(fi, fo, cbow, neg, dim, alpha, win, min_count, num_processes, binary):
     print(f"the input training file: {fi}")
@@ -280,8 +293,9 @@ def train(fi, fo, cbow, neg, dim, alpha, win, min_count, num_processes, binary):
 
     #now we are startinf the training job
     t0 = time.time()
-    pool = Pool(processes=num_processes, initializer=__init_process, initargs=())
-    #TODO the intialization and the training itself
+    pool = Pool(processes=num_processes, initializer=__init_process, initargs=(vocab, syn0, syn1, table, cbow, neg, dim, alpha,
+                                                                            win, num_processes, global_word_count, fi))
+    #TODO The training itself
     t1 = time.time()
     duration_in_minutes = round((t1 - t0)/60)
     print(f"[train] the total durantion of the training took {duration_in_minutes} minutes using {num_processes} threads")
