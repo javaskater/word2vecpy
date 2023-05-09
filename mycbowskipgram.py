@@ -7,6 +7,7 @@ import numpy as np
 import time
 import struct
 import warnings
+import os
 
 from multiprocessing import Array, Value, Pool
 
@@ -252,10 +253,72 @@ def __init_process(*args):
     vocab, syn0_tmp, syn1_tmp, table, cbow, neg, dim, starting_alpha, win, num_processes, global_word_count = args[:-1]
     fi = open(args[-1], 'r')
     #see https://www.pythonpool.com/suppress-warnings-in-python/ for supressing warnings for specific lines of code
-    with warnings.catch_warnings:
+    with warnings.catch_warnings():
         warnings.simplefilter('ignore', RuntimeWarning)
         syn0 = np.ctypeslib.as_array(syn0_tmp)
         syn1 = np.ctypeslib.as_array(syn1_tmp)
+
+def train_process():
+    #the global variables (global only to the process i.e. between the init_process and this method) are:
+    ## vocab: a Vocabulary object with all the text words of the text already inside
+    ## syn0 the (vocab_size x dim) the vectors output 
+    ## syn1 the (vocab_size x dim) the weights of the hidden layer
+    ## table the UnigramTable only used if neg > 0
+    ## cbow (program parameter) If True I caclulate the Continuous Bag of Words otherwise I do a SkipGram
+    ## neg (program parameter) if positive I use the unigram table to negative sampling: it is the number of negative samples; 0 for softmax OUTPUT
+    ## dim (program parameter) the size of the hidden layer
+    ## starting_alpha (program parameter) the intial value of alpha used for gradient descent
+    ## win (program parameter) the max length of the words' window
+    ## num_processes (programm parameter) the total number of processes
+    ## global_word_count the shared variable counting the number or processed words during training
+    ## the text input's file handle
+
+    pid = os.getpid() - os.getppid -1 #start with one see #https://docs.python.org/3/library/multiprocessing.html and tests/shared_arrays_and_values.py
+
+    #set fi (input file's handle) to point to the right cunk of the training file
+    # each process will treat its own chunk of the input file
+    start = round(vocab.bytes / num_processes * pid) # vocab.bytes see the end of the __init__ method of the Vocab class
+    end = round(vocab.bytes if pid == num_processes -1 else  vocab.bytes / num_processes * (pid + 1)) #this end is the beginning ot the next process (if not the max processes)
+
+    fi.seek(start) #we go from start (inclusive) tho the end (exclusive) position
+
+    print(f"Worker of pid: {pid} starting to read at (included) {start} position until (excluded) {end} position")
+
+    alpha = starting_alpha #the alpha parameter used for gradient descent
+
+    word_count = 0
+    last_word_count = 0 # to add to the global word count
+
+    while fi.tell < end:
+        line = fi.readline().strip() #the line can start at the middle of a word see tests/File/read.py two processes can overlap the same line
+        #Skip blank lines
+        if not line:
+            continue
+
+        #see Vocab class indices method returns the indices of the word accessible through Vocab.get if it exists in Vocab 
+        # otherwithe it returns the indice of <unk> in Vocak (typically for cuted words)
+        sent = vocab.indices('[bol]'+ line.split() + '[eol]')
+
+        #first iteration: we iterates on the line
+        for sent_pos, token_indice in enumerate(sent):
+            if word_count % 10000 == 0: #each 10000 words we update alpha
+                global_word_count.value += word_count - last_word_count
+                last_word_count = word_count
+
+                #recalculate alpha diminishing it slowly until starting_alpha * 0.0001
+                alpha = starting_alpha * (1 - float(global_word_count.value) / vocab.word_count)
+                if alpha < starting_alpha * 0.0001: alpha = starting_alpha * 0.0001
+
+                #Print progress info:
+                sys.stdout.write('\r Alpha: %f Progress: %d of %d (%.2f %%)', alpha, 
+                                 global_word_count.value, vocab.word_count, float(global_word_count.value) / vocab.word_count * 100)
+                sys.stdout.flush()
+
+            #calculate the current window 
+
+        #second iteration: for each line's window we update the weights
+
+
 
 def train(fi, fo, cbow, neg, dim, alpha, win, min_count, num_processes, binary):
     print(f"the input training file: {fi}")
