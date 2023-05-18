@@ -27,7 +27,7 @@ class Vocab:
         fi = open(fi, 'r')
 
         #Add sepcial tokens <bol> (begin of line) and <eol> (end of line) to the list of token
-        for token in ['<bol', '<eol>']:
+        for token in ['<bol>', '<eol>']:
             vocab_hash[token] = len(vocab_items)
             vocab_items.append(VocabItem(token)) #we will increment their count later as we really meet them
 
@@ -42,7 +42,7 @@ class Vocab:
                 word_count += 1 #total count of words independently they already existed or not!
 
                 if word_count % 1000 == 0:
-                    sys.stdout.write("\r Reading %d words", word_count)
+                    sys.stdout.write("\r Reading %d words" % (word_count))
                     sys.stdout.flush()
 
             # add the begin of line and the end of line a token to increment their counts
@@ -164,9 +164,9 @@ class Vocab:
                     node_idx = parent[node_idx]
                 path.append[root_idx]
 
-                vocab_item.path = [j - voca
-                b_size for j in path[::-1]] #I chose to begin at 0 first index of the non leaf nodes !
-                vocab_item.code = code[::-1]
+                vocab_item.path = [j - vocab_size for j in path[::-1]] #I chose to begin at 0 first index of the non leaf nodes !
+                #vocab_item.path contains the path (list of Vocab' indices) from the root to the parent of vocab_item
+                vocab_item.code = code[::-1] #Huffman value from root to me 1 if the more frequent else zero 1 for left (more frequent) 0 for right
 
 class UnigramTable:
     """ A list of indices of vocab_items (tokens) in a table following a power distribution
@@ -177,7 +177,7 @@ class UnigramTable:
         power = 0.75 #lessen frequent words and augment les frequent words see http://mccormickml.com/2017/01/11/word2vec-tutorial-part-2-negative-sampling/
         norm = sum([math.pow(t.count, power) for t in vocab]) #normalizing constant to get a probaility, see the __iter__ implemntation of vocab
         
-        table_size = 1e8 #length of the unigram table
+        table_size = int(1e8) #length of the unigram table
         table = np.zeros(table_size, dtype=np.uint32) #it is a table of indices in the Vocab object see __get_item__(self, indice)
 
         print("Filling the Unigram table")
@@ -236,7 +236,7 @@ def save(vocab, syn0, fo, binary):
             fo.write("\n")
     else: #we write in text format
         fo = open(fo, 'w') #write text format
-        fo.write("%d %d\n" %(len(syn0, dim))) #the number of words and the output dimension of each word (projection)
+        fo.write("%d %d\n" %(len(syn0), dim)) #the number of words and the output dimension of each word (projection)
 
         for vocab_item, vector in zip(vocab, syn0):
             word = vocab_item.word
@@ -255,13 +255,13 @@ def __init_process(*args):
     #see https://www.pythonpool.com/suppress-warnings-in-python/ for supressing warnings for specific lines of code
     with warnings.catch_warnings():
         warnings.simplefilter('ignore', RuntimeWarning)
-        syn0 = np.ctypeslib.as_array(syn0_tmp)
+        syn0 = np.ctypeslib.as_array(syn0_tmp) #syn0 shares the memory with the Pooling unlocked Array syn0_tmp
         syn1 = np.ctypeslib.as_array(syn1_tmp)
 
 def train_process():
     #the global variables (global only to the process i.e. between the init_process and this method) are:
     ## vocab: a Vocabulary object with all the text words of the text already inside
-    ## syn0 the (vocab_size x dim) the vectors output 
+    ## syn0 the (vocab_size x dim) the vectors output (between )
     ## syn1 the (vocab_size x dim) the weights of the hidden layer
     ## table the UnigramTable only used if neg > 0
     ## cbow (program parameter) If True I caclulate the Continuous Bag of Words otherwise I do a SkipGram
@@ -289,7 +289,7 @@ def train_process():
     word_count = 0
     last_word_count = 0 # to add to the global word count
 
-    while fi.tell < end:
+    while fi.tell < end: #first iteration: we iterate line by line of the file
         line = fi.readline().strip() #the line can start at the middle of a word see tests/File/read.py two processes can overlap the same line
         #Skip blank lines
         if not line:
@@ -299,7 +299,7 @@ def train_process():
         # otherwithe it returns the indice of <unk> in Vocak (typically for cuted words)
         sent = vocab.indices('[bol]'+ line.split() + '[eol]')
 
-        #first iteration: we iterates on the line
+        #second iteration: we iterates on the line
         for sent_pos, token_indice in enumerate(sent):
             if word_count % 10000 == 0: #each 10000 words we update alpha
                 global_word_count.value += word_count - last_word_count
@@ -314,10 +314,73 @@ def train_process():
                                  global_word_count.value, vocab.word_count, float(global_word_count.value) / vocab.word_count * 100)
                 sys.stdout.flush()
 
-            #calculate the current window 
+            #calculate the current window (a random value from 1 -inclusive- to win +1 exclusive)
+            current_win = np.random.randint(low=1, high=win+1)
+            context_start = max(0, sent_pos - current_win)
+            context_end = min(len(sent), sent_pos + current_win + 1) #+1 because the context_end is excluded from the selection
+            #token_indice = sent[sent_pos]
+            # list of the token_indices from the line's window to be translated in VocabItem(s) through Vocab[token_indice]
+            context = sent[context_start:sent_pos] + sent[sent_pos+1, context_end] #we have all the indices of the words of Vocab used (Vocab[context[i]])
+            #context contains all the indices of words in Vocab (except for the right word)
+            #second iteration: for each line's window we update the weights
+            
+            #Continuous Bag of Words (CBOW)
+            if cbow:
+                #neu1 is the computed representation in the hiddent layer of the word Vocab[token_indice] through its windows' neighbors
+                ## context contains the vocab_indices which are the same in the Vocab object and in the syn0 traduction 
+                ## (0 for the most ferquent vocab_size -1 for the less frequent)
+                neu1 = np.mean(np.array([syn0[c] for c in context]), axis = 0) #mean of the rows of the context (only use of the context)
+                assert len(neu1) == dim, 'neu1 and dim do not agree'
 
-        #second iteration: for each line's window we update the weights
+                ##init neu1e with zeros #error on neu1
+                neu1e = np.zeros(dim)
+                
+                #update neu1e and update syn1 (the matrice (vocab_size x dim) of the weights of the hidden layer)
+                if neg > 0: #neg is by default 4
+                    #vocab[token_indice] is the right word so 1
+                    # we draw 4 negative samples from big Unigram table vocab[target] is a negative sample so 0
+                    classifiers = [(token_indice, 1)] + [(target, 0) for target in table.sample(neg)]
+                else: #case of hierarchical softmax see https://arxiv.org/abs/1411.2738
+                    classifiers = zip(vocab[token_indice].path, vocab[token_indice].code) #see page 10 of https://arxiv.org/abs/1411.2738
+                for target, label in classifiers:
+                    #forward phase syn1(vocab_size, sim) is the transpose of the weights' matrice between the hidden and the output layers
+                    z = np.dot(neu1, syn1[target]) #see h * v'j why do the upper root nodes have a less frequency ? syn1 are the weights of the hidden layer
+                    p = sigmoid(z) #z and p are scalars p id the output for target
+                    g = alpha * (label - p) #scalar
+                    #back propagation 
+                    # we do a g * v'i to backpropagate error to syn0
+                    neu1e += g * syn1[target] #for np.array it multiplies each element for list it multiply the number of elements
+                    syn1[target] += g * neu1 #we recalculate v'i
 
+                #updates syn0 (we have calculated neu1e for each target in the hierarchy of my word or of the negative sampling)
+                for context_word in context: #Window in the line: we don not do it for the word itself beacause there is no error
+                    syn0[context_word] += neu1e
+
+            else: #SkipGram 
+                for context_word in context: #instead of working with neu1 we work with each of context words
+                    neu1e = np.zeros(dim) # we initiate the error with zeros
+
+                    #update neu1e and update syn1 (the matrice (vocab_size x dim) of the weights of the hidden layer)
+                    if neg > 0:
+                        #vocab[token_indice] is the right word so 1
+                        # we draw 4 negative samples from big Unigram table vocab[target] is a negative sample so 0
+                        classifiers = [(token_indice, 1)] + [(target, 0) for target in table.sample(neg)]
+                    else: #case of hierarchical softmax see https://arxiv.org/abs/1411.2738
+                        classifiers = zip(vocab[token_indice].path, vocab[token_indice].code) #see page 10 of https://arxiv.org/abs/1411.2738
+
+                    for target, label in classifiers:
+                        z = np.dot(syn0[context_word], syn1[target]) #see h * v'j why do the upper root nodes have a less frequency ? syn1 are the weights of the hidden layer
+                        p = sigmoid(z) #z and p are scalars
+                        g = alpha * (label - p) #scalar
+                        # we do a g * v'i to backpropagate error to syn0
+                        neu1e += g * syn1[target] #for np.array it multiplies each element for list it multiply the number of elements
+                        syn1[target] += g * syn0[context_word] #we recalculate v'i
+
+                    #updates syn0 (we have calculated neu1e for each target in the hierarchy of my word or of the negative sampling)
+                    syn0[context_word] += neu1e
+
+            #after having worked on the context of a word of a line we pass to the next
+            word_count += 1
 
 
 def train(fi, fo, cbow, neg, dim, alpha, win, min_count, num_processes, binary):
@@ -358,7 +421,14 @@ def train(fi, fo, cbow, neg, dim, alpha, win, min_count, num_processes, binary):
     t0 = time.time()
     pool = Pool(processes=num_processes, initializer=__init_process, initargs=(vocab, syn0, syn1, table, cbow, neg, dim, alpha,
                                                                             win, num_processes, global_word_count, fi))
-    #TODO The training itself
+    # issue tasks to the process pool
+    for _ in range(num_processes):
+        pool.apply_async(train_process)
+        # close the process pool
+    pool.close()
+    # wait for all tasks to complete
+    pool.join()
+
     t1 = time.time()
     duration_in_minutes = round((t1 - t0)/60)
     print(f"[train] the total durantion of the training took {duration_in_minutes} minutes using {num_processes} threads")
