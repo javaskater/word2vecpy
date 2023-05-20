@@ -51,7 +51,7 @@ class Vocab:
             word_count += 2
         
         #after reading all lines in the file
-        self.bytes = fi.tell()
+        self.bytes = fi.tell() #all the bytes in the file
         self.vocab_items = vocab_items #list of VocabItem objects whose index in the list is given by the hash just after
         self.vocab_hash = vocab_hash   #dictionary of words (string) to the index of the corresponding VocabItem object in the list just above
         self.word_count = word_count #the total number of all words found in the file (including duplicates)
@@ -180,16 +180,16 @@ class UnigramTable:
         table_size = int(1e8) #length of the unigram table
         table = np.zeros(table_size, dtype=np.uint32) #it is a table of indices in the Vocab object see __get_item__(self, indice)
 
-        print("Filling the Unigram table")
+        print("[UnigramTable __init__] Filling the Unigram table", flush=True)
         p = 0 #the cumulative probaility
         i = 0 #the table indice table[i] is the indice in the Vocak object to be repeated until P(wi)
-
+        #enumerate calls the iterator returned from def __iter__(self) of the Vocab class
         for j, unigram in enumerate(vocab): #we get the indices of the vocab items in j sorted from the most frequent token to the less frequent one
             p += math.pow(unigram.count, power) / norm
             while i < table_size and float(i) / table_size < p:
                 table[i] = j
                 i += 1
-        
+        print("[UnigramTable __init__] Unigram table filled", flush=True)
         self.table = table #we need it to take a negative sample
 
     #we take count negative samples
@@ -217,6 +217,11 @@ def init_net(dim, vocab_size): #dim is the dimension of the hidden layer, vocab_
     syn1 = np.ctypeslib.as_ctypes(tmp)
     syn1 = Array(syn1._type_, syn1, lock=False)
 
+    #syn0 (vocab_size, dim) coefficients between the hidden_layer and the ouput layer (we don't care of them) initialized randomly
+    ## it is in fact the transpose of the output matrix
+    #syn1 (vocab_size,dim) coefficients between the input layer and the hidden layer if the inputvetor is a one-hot linevector
+    ## then each line in syn1 represent a word in the hidden layer space (the firt lines for the most frequent words) 
+    ##these coefficients are 0 initialized
     return (syn0, syn1)
 
 #vocab classified from more frequent to less frequent and the syn0 lines must match (use of zip underneath)
@@ -257,8 +262,12 @@ def __init_process(*args):
         warnings.simplefilter('ignore', RuntimeWarning)
         syn0 = np.ctypeslib.as_array(syn0_tmp) #syn0 shares the memory with the Pooling unlocked Array syn0_tmp
         syn1 = np.ctypeslib.as_array(syn1_tmp)
+    
+    num_process =  os.getpid() #see #https://docs.python.org/3/library/multiprocessing.html and tests/shared_arrays_and_values.py
+    num_parent_process = os.getppid()
+    print(f"[__init_process] initialization of process {num_process} (parent {num_parent_process}) out of {num_processes} processes ended")
 
-def train_process():
+def train_process(pid):
     #the global variables (global only to the process i.e. between the init_process and this method) are:
     ## vocab: a Vocabulary object with all the text words of the text already inside
     ## syn0 the (vocab_size x dim) the vectors output (between )
@@ -273,8 +282,6 @@ def train_process():
     ## global_word_count the shared variable counting the number or processed words during training
     ## the text input's file handle
 
-    pid = os.getpid() - os.getppid -1 #start with one see #https://docs.python.org/3/library/multiprocessing.html and tests/shared_arrays_and_values.py
-
     #set fi (input file's handle) to point to the right cunk of the training file
     # each process will treat its own chunk of the input file
     start = round(vocab.bytes / num_processes * pid) # vocab.bytes see the end of the __init__ method of the Vocab class
@@ -282,7 +289,7 @@ def train_process():
 
     fi.seek(start) #we go from start (inclusive) tho the end (exclusive) position
 
-    print(f"Worker of pid: {pid} starting to read at (included) {start} position until (excluded) {end} position")
+    print(f"[train_process_{pid}] Worker of number: {pid + 1} out of {num_processes} starting to read the input file at (included) {start} position until (excluded) {end} position")
 
     alpha = starting_alpha #the alpha parameter used for gradient descent
 
@@ -310,7 +317,7 @@ def train_process():
                 if alpha < starting_alpha * 0.0001: alpha = starting_alpha * 0.0001
 
                 #Print progress info:
-                sys.stdout.write('\r Alpha: %f Progress: %d of %d (%.2f %%)', alpha, 
+                sys.stdout.write('\r [train_process_%d] Process pid %d Alpha: %f Progress: %d of %d (%.2f %%)', pid, pid+1, alpha, 
                                  global_word_count.value, vocab.word_count, float(global_word_count.value) / vocab.word_count * 100)
                 sys.stdout.flush()
 
@@ -329,6 +336,9 @@ def train_process():
                 #neu1 is the computed representation in the hiddent layer of the word Vocab[token_indice] through its windows' neighbors
                 ## context contains the vocab_indices which are the same in the Vocab object and in the syn0 traduction 
                 ## (0 for the most ferquent vocab_size -1 for the less frequent)
+                ##syn0 is the matrice (vocab_size*dim) between the one_hot input (size vocab_size) and the hidden layer
+                # a line of syn0 correspond to the hidden representation of the corresponding (1 same indice as the line indice of syn0) one hot representation of the word
+                ## (1,0,.....0) is the most frequent word in Vocab
                 neu1 = np.mean(np.array([syn0[c] for c in context]), axis = 0) #mean of the rows of the context (only use of the context)
                 assert len(neu1) == dim, 'neu1 and dim do not agree'
 
@@ -342,6 +352,7 @@ def train_process():
                     classifiers = [(token_indice, 1)] + [(target, 0) for target in table.sample(neg)]
                 else: #case of hierarchical softmax see https://arxiv.org/abs/1411.2738
                     classifiers = zip(vocab[token_indice].path, vocab[token_indice].code) #see page 10 of https://arxiv.org/abs/1411.2738
+
                 for target, label in classifiers:
                     #forward phase syn1(vocab_size, sim) is the transpose of the weights' matrice between the hidden and the output layers
                     z = np.dot(neu1, syn1[target]) #see h * v'j why do the upper root nodes have a less frequency ? syn1 are the weights of the hidden layer
@@ -384,22 +395,22 @@ def train_process():
 
 
 def train(fi, fo, cbow, neg, dim, alpha, win, min_count, num_processes, binary):
-    print(f"the input training file: {fi}")
-    print(f"the output model file: {fo}")
+    print(f"[train] the input training file: {fi}", flush=True)
+    print(f"[train] the output model file: {fo}", flush=True)
     if cbow:
-        print("I create a un Continuous Bag Of Words")
+        print("[train] I create a un Continuous Bag Of Words", flush=True)
     else:
-        print("I calculate a Skip Gram Diagram")
-    print(f"the number of negative examples (if 0 hierarchival softmax): {neg}")
-    print(f"the size of the hidden layer (word embedding): {dim}")
-    print(f"coeffcient for gradient descending: {alpha}")
-    print(f"the window size of words: {win}")
-    print(f"the minimum number of words used for learning the model: {min_count}")
-    print(f"the number of parallel processes for learning the model: {num_processes}")
+        print("[train] I calculate a Skip Gram Diagram", flush=True)
+    print(f"[train] the number of negative examples (if 0 hierarchival softmax): {neg}", flush=True)
+    print(f"[train] the size of the hidden layer (word embedding): {dim}", flush=True)
+    print(f"[train] coeffcient for gradient descending: {alpha}", flush=True)
+    print(f"[train] the window size of words: {win}", flush=True)
+    print(f"[train] the minimum number of words used for learning the model: {min_count}", flush=True)
+    print(f"[train] the number of parallel processes for learning the model: {num_processes}", flush=True)
     if binary:
-        print(f"the output model file {fo} is in binary format")
+        print(f"[train] the output model file {fo} is in binary format", flush=True)
     else:
-        print(f"the output model file {fo} is in text format")
+        print(f"[train] the output model file {fo} is in text format", flush=True)
 
     #Read train file to init Vocab
     vocab = Vocab(fi, min_count)
@@ -411,27 +422,23 @@ def train(fi, fo, cbow, neg, dim, alpha, win, min_count, num_processes, binary):
 
     table = None
     if neg > 0:
-        print("[train] initializing the UNIGRAMM table")
+        print("[train] initializing the UNIGRAMM table", flush=True)
         table = UnigramTable(vocab)
     else:
-        print("[train] Calculating the HUFFMAN tree")
+        print("[train] Calculating the HUFFMAN tree used in the hierarchical softmax", flush=True)
         vocab.encode_huffmann()
 
     #now we are startinf the training job
+    print(f"[train] starting the {num_processes} process(es)", flush=True)
     t0 = time.time()
     pool = Pool(processes=num_processes, initializer=__init_process, initargs=(vocab, syn0, syn1, table, cbow, neg, dim, alpha,
                                                                             win, num_processes, global_word_count, fi))
     # issue tasks to the process pool
-    for _ in range(num_processes):
-        pool.apply_async(train_process)
-        # close the process pool
-    pool.close()
-    # wait for all tasks to complete
-    pool.join()
+    pool.map_async(train_process, range(num_processes))
 
     t1 = time.time()
     duration_in_minutes = round((t1 - t0)/60)
-    print(f"[train] the total durantion of the training took {duration_in_minutes} minutes using {num_processes} threads")
+    print(f"[train] the total duration of the training took {duration_in_minutes} minutes using {num_processes} threads")
 
     #save the model to a file
     ## vocab and syn0 have been calculated syn0 is the vocabulary projected in the new space

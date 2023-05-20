@@ -24,14 +24,14 @@ def init_shared_variables():
 
 # see https://superfastpython.com/multiprocessing-pool-initializer/
 # task executed in a worker process
-def task():
+def task(pid):
     global_word_count.value += 2
     syn0_g[0] += 1.0
     #see https://docs.python.org/3/library/multiprocessing.html to simulate what is called the pid in pool.map
     num_process = os.getpid()
     num_pprocess = os.getppid()
     # report a message
-    print(f"Worker executing task... pid {num_process} parent pid {num_pprocess} no execution {num_process - num_pprocess}", flush=True)
+    print(f"[task_{pid}] Worker executing task... pid {num_process} parent pid {num_pprocess} no execution {num_process - num_pprocess}", flush=True)
 
 # initialize a worker in the process pool
 def initialize_worker(*args):
@@ -42,8 +42,11 @@ def initialize_worker(*args):
     #with warnings.catch_warnings:
      #   warnings.simplefilter('ignore', RuntimeWarning)
       #  syn0 = np.ctypeslib.as_array(syn0_tmp)
+    num_process = os.getpid()
+    num_pprocess = os.getppid()
+
     # report a message
-    print('Initializing worker...', flush=True)
+    print(f"[initialize_worker] Initializing worker pid {num_process} parent pid {num_pprocess} no execution {num_process - num_pprocess}...", flush=True) #le flush=true est obligatoire quand on est dans un sous processus
  
 # protect the entry point
 if __name__ == '__main__':
@@ -51,12 +54,13 @@ if __name__ == '__main__':
     # create and configure the process pool
     pool = Pool(processes=2, initializer=initialize_worker, initargs=(syn0, global_word_count))
     # issue tasks to the process pool
-    for _ in range(2):
-        pool.apply_async(task)
+    #for _ in range(2):
+     #   pool.apply_async(task)
+    pool.map_async(task, range(2))
         # close the process pool
-    pool.close()
+    #pool.close()
     # wait for all tasks to complete
-    pool.join()
+    #pool.join()
 
     print(f"le tableau est devenu {'|'.join([str(t) for t in syn0_tmp])}")
     print(f"le global word count vaut {global_word_count.value}")
