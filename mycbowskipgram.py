@@ -207,12 +207,12 @@ def sigmoid(z):
     
 #for the sense of syn0 and syn1 see the answer at https://stackoverflow.com/questions/53301916/python-gensim-what-is-the-meaning-of-syn0-and-syn0norm
 def init_net(dim, vocab_size): #dim is the dimension of the hidden layer, vocab_size is the number of lines at the input
-    #init syn0 with a uniform distribution on the interval [-0.5, 0.5]/dim. syn0 represents the output vectors
+    #init syn0 with a uniform distribution on the interval [-0.5, 0.5]/dim. syn0 represents matrix of the input layer (between the one_hot input and the hidden layer od dimension dim)
     tmp = np.random.uniform(low=-0.5/dim, high=0.5/dim, size=(vocab_size, dim))
     syn0 = np.ctypeslib.as_ctypes(tmp)
     syn0 = Array(syn0._type_, syn0, lock=False)
 
-    #init syn1 with zeros syn1 reprensent the weight of the hidden layer
+    #init syn1 with zeros syn1 the transpose matrix of the weights between the hidden and the output layer (which has a vocab size dimension because we output the onehot represnetation of the calculated word)
     tmp = np.zeros(shape=(vocab_size, dim))
     syn1 = np.ctypeslib.as_ctypes(tmp)
     syn1 = Array(syn1._type_, syn1, lock=False)
