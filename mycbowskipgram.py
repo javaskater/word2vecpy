@@ -120,7 +120,7 @@ class Vocab:
 
         #see schema on https://towardsdatascience.com/huffman-encoding-python-implementation-8448c3654328
         ## on the link the nodes are classified in descending frequency
-        for i in range(vocab_size -1): #from 0 to vocab_size - 2 (we include the root_idx) see schema
+        for i in range(vocab_size -1): #from 0 to vocab_size - 2 (we exclude the root_idx) see schema
             #find min1 the less frequent word in the resulting tree
             if pos1 >= 0: #i = 0 for pos1 = vocab_size-1 i = vocabsize - 2 por pos1 = 1
                 if count[pos1] < count[pos2]: # true for the first time
@@ -146,27 +146,28 @@ class Vocab:
                 pos2 += 1
 
             count[vocab_size + i] = count[min1] + count[min2]
-            parent[min1] = vocab_size + i #min 1 varies from vocab_size -1 (i = 0) to 1 or from vocab_size to vocab_size + vocab_size -2
-            parent[min2] = vocab_size + i #min2 varies from vocab_size - 2 (i = 0) to 0 or from vocab_size to vocab_size + vocab_size -2
+            parent[min1] = vocab_size + i #min 1 varies from vocab_size -1 (i = 0) to 1 or from vocab_size to vocab_size + vocab_size -2 (because we exclude the root node)
+            parent[min2] = vocab_size + i #min2 varies from vocab_size - 2 (i = 0) to 0 or from vocab_size to vocab_size + vocab_size -2 (because we exclude the root node)
             binary[min2] = 1 #the more frequent word in a subtree is represented by 1 binary[min1] is already 0
 
-            #assign binary code and path pointer to each vocab word
-            root_idx = 2 * vocab_size -2 # vocab_size -1 is the last vocab_item + from vocab_size to vocab_size + vocab_size - 2 for the non leaf nodes see schema
-            for i, vocab_item in enumerate(self):
-                path = [] #list of indices from leaf to the root
-                code = [] #binary Huffmann encoding from leaf to the root
+        #assign binary code and path pointer to each vocab word
+        pre_root_idx = 2 * vocab_size -2 # vocab_size -1 is the last vocab_item (for the leaf nodes) + (vocab_size to vocab_size - 2 for the non leaf nodes if we exclude the absolute root
+        for i, vocab_item in enumerate(self):
+            path = [] #list of indices from leaf to the root
+            code = [] #binary Huffmann encoding from leaf to the root
 
-                node_idx = i #0 is the most frequent word vocab_size -1 is the less frequent word
-                
-                while(node_idx < root_idx):
-                    if node_idx >= vocab_size: path.append(node_idx) #we start with the first parent then the parent of parent
-                    code.append(binary[node_idx])
-                    node_idx = parent[node_idx]
-                path.append[root_idx]
+            node_idx = i #0 is the most frequent word vocab_size -1 is the less frequent word
+            
+            while(node_idx < pre_root_idx):
+                if node_idx >= vocab_size: path.append(node_idx) #we start with the first parent then the parent of parent
+                code.append(binary[node_idx])
+                node_idx = parent[node_idx]
+            path.append[pre_root_idx]
+            code.append(binary[pre_root_idx])
 
-                vocab_item.path = [j - vocab_size for j in path[::-1]] #I chose to begin at 0 first index of the non leaf nodes !
-                #vocab_item.path contains the path (list of Vocab' indices) from the root to the parent of vocab_item
-                vocab_item.code = code[::-1] #Huffman value from root to me 1 if the more frequent else zero 1 for left (more frequent) 0 for right
+            vocab_item.path = [j - vocab_size for j in path[::-1]] #I chose to begin at 0 first index of the non leaf nodes !
+            #vocab_item.path contains the path (list of Vocab' indices) from the root to the parent of vocab_item
+            vocab_item.code = code[::-1] #Huffman value from root to me 1 if the more frequent else zero 1 for left (more frequent) 0 for right
 
 class UnigramTable:
     """ A list of indices of vocab_items (tokens) in a table following a power distribution

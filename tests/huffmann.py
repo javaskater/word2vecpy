@@ -4,7 +4,7 @@
 
 class Node:
     def __init__(self, prob, symbol, left=None, right=None) -> None:
-        #probability of symbol
+        #probability of symbol its ferquency (if it is not a leaf Node, then the sum of the frequencies of its child nodes)
         self.prob = prob
         
         #the symbol itself
@@ -99,9 +99,9 @@ def HuffmanEncoding(data):
 
         #takes the two smallest nodes (relative to their probability)
         right = nodes[0] #the smallest
-        right.code = str(1) #the value of the edge arriving to that node
+        right.code = str(1) #the value of the edge arriving to that node, in that case the string '1'
         left = nodes[1] #the second smallest
-        left.code = str(0) #the value of the edge arriving to that node
+        left.code = str(0) #the value of the edge arriving to that node, in that case the string '0'
         ## and combine them
         ### the only important thing is the combined probaility (sum) not the combined symbol (that we don't use)
         new_node = Node(left.prob+right.prob, f"{left.symbol}-{right.symbol}", left=left, right=right)
