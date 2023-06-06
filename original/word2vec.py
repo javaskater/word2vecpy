@@ -156,7 +156,6 @@ class Vocab:
                 code.append(binary[node_idx])
                 node_idx = parent[node_idx]
             path.append(root_idx)
-            code.append(binary[root_idx])
 
             # These are path and code from the root to the leaf
             token.path = [j - vocab_size for j in path[::-1]]

@@ -151,19 +151,18 @@ class Vocab:
             binary[min2] = 1 #the more frequent word in a subtree is represented by 1 binary[min1] is already 0
 
         #assign binary code and path pointer to each vocab word
-        pre_root_idx = 2 * vocab_size -2 # vocab_size -1 is the last vocab_item (for the leaf nodes) + (vocab_size to vocab_size - 2 for the non leaf nodes if we exclude the absolute root
+        root_idx = 2 * vocab_size -2 # this is the indice of the real root of the Huffmann tree althugout not present th the parent and binary lists
         for i, vocab_item in enumerate(self):
             path = [] #list of indices from leaf to the root
             code = [] #binary Huffmann encoding from leaf to the root
 
             node_idx = i #0 is the most frequent word vocab_size -1 is the less frequent word
             
-            while(node_idx < pre_root_idx):
+            while(node_idx < root_idx):
                 if node_idx >= vocab_size: path.append(node_idx) #we start with the first parent then the parent of parent
                 code.append(binary[node_idx])
                 node_idx = parent[node_idx]
-            path.append[pre_root_idx]
-            code.append(binary[pre_root_idx])
+            path.append[root_idx] # the real root of the Huffmann tree
 
             vocab_item.path = [j - vocab_size for j in path[::-1]] #I chose to begin at 0 first index of the non leaf nodes !
             #vocab_item.path contains the path (list of Vocab' indices) from the root to the parent of vocab_item
@@ -228,7 +227,7 @@ def init_net(dim, vocab_size): #dim is the dimension of the hidden layer, vocab_
 #vocab classified from more frequent to less frequent and the syn0 lines must match (use of zip underneath)
 def save(vocab, syn0, fo, binary):
     print(f"[save]Saving output vectors to {fo} in binary({binary}) mode ") # fo is the path of the output file
-    dim = len(syn0[0]) # the second dimension of syn0 the size of the output vectors
+    dim = len(syn0[0]) # the size of a vector syn0 the size of the hidden layer vectors or word projections
     #what a zip does: https://www.programiz.com/python-programming/methods/built-in/zip
     if binary:
         fo = open(fo, 'wb') #write binary format
