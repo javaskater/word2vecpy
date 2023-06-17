@@ -57,10 +57,10 @@ if __name__ == '__main__':
     #for _ in range(2):
      #   pool.apply_async(task)
     pool.map_async(task, range(2))
-        # close the process pool
-    #pool.close()
+    # close the process pool
+    pool.close()
     # wait for all tasks to complete
-    #pool.join()
+    pool.join()
 
     print(f"le tableau est devenu {'|'.join([str(t) for t in syn0_tmp])}")
     print(f"le global word count vaut {global_word_count.value}")

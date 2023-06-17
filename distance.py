@@ -12,7 +12,7 @@ class WordVector:
     def getItems(self):
         line_arr= self.line.split()
         if len(line_arr) > 1 and self.word is None:
-            self.word = line_arr[0]
+            self.word = line_arr[0].lower()
             self.h_vector = np.array(line_arr[1:]).astype(np.float64) #each element is a U22 string by default
         return (self.word, self.h_vector)
 
@@ -28,7 +28,7 @@ class WordVector:
     
 #utility function finding a specific word vector by its word value in the list of word_vectors
 ## it returns a array of which we expect it to be of size 1
-get_word_vector = lambda word, arr_word_vectors: [wv for wv in  arr_word_vectors if word == wv.word]
+get_word_vector = lambda word, arr_word_vectors: [wv for wv in  arr_word_vectors if word.lower() == wv.word]
 
 def find_words_vectors(file, word1, word2):
     word_vectors = []

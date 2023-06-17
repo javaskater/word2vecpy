@@ -355,7 +355,7 @@ def train_process(pid):
 
                 for target, label in classifiers:
                     #forward phase syn1(vocab_size, sim) is the transpose of the weights' matrice between the hidden and the output layers
-                    z = np.dot(neu1, syn1[target]) #see h * v'j why do the upper root nodes have a less frequency ? syn1 are the weights of the hidden layer
+                    z = np.dot(neu1, syn1[target]) #see h * v'j why do the upper root nodes have a greater frequency ! syn1 are the weights of the hidden layer
                     p = sigmoid(z) #z and p are scalars p id the output for target
                     g = alpha * (label - p) #scalar
                     #back propagation 
